@@ -1,0 +1,7 @@
+*.log
+__pycache__/
+.ipynb_checkpoints/
+slack_da/
+data-cleaning.ipynb
+oretan.py 
+retrieved-slack-data.py 
