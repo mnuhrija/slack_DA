@@ -5,3 +5,5 @@ slack_da/
 data-cleaning.ipynb
 oretan.py 
 retrieved-slack-data.py 
+*.json
+*.ipynb

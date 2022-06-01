@@ -4,11 +4,14 @@ import json
 import glob
 import numpy as np
 import pandas as pd
+import re 
+import pytz
+from datetime import datetime
 
 
 #generate all channels in one dataframe
 def parse_all_json(main_folder_path):
-    df = pd.DataFrame()
+    dataframe = pd.DataFrame()
 
     ## iterate through the group of folder
     for folder in os.listdir(main_folder_path):
@@ -23,142 +26,124 @@ def parse_all_json(main_folder_path):
                 if file.endswith('.json'):
                     data = pd.read_json(file)
                     data['channel_name'] = folder
-                    df = pd.concat([df,data])
+                    dataframe = pd.concat([dataframe,data])
                     
-    return df
+    return dataframe
 
 class data_cleaning:
 
     # data wrangling
     def datetime_wrangling(dataframe):
         ###this function is applied to summarise wrangling steps with datetime
-        
-        # convert ts to datetime from float
-        dataframe['ts'] = pd.to_datetime(dataframe['ts'], unit='s').astype('datetime64[s]')
-        
+        new_ts= []
+        # convert ts to datetime(localtime WIB) from float
+        for i in dataframe['ts']:
+            new = pd.to_datetime(i, unit='s', utc= True).astimezone(pytz.timezone('Asia/Jakarta'))
+            new_ts.append(new)
+        dataframe['new_ts'] = new_ts
         # create a column for hour and minute of the day using the ts column
-        dataframe['date']= dataframe['ts'].dt.strftime(r"%d/%m/%y")
+        dataframe['date']= dataframe['new_ts'].dt.strftime(r"%d/%m/%y")
 
         # create a column for hour and minute of the day using the ts column
-        dataframe['time']= dataframe['ts'].dt.strftime('%H:%M:%S')
+        dataframe['time']= dataframe['new_ts'].dt.strftime('%H:%M:%S')
         
+        # create a column for the months of the year using the ts column
+        dataframe['hour'] = dataframe['new_ts'].dt.hour
+
         # drop ts column
-        dataframe.drop('ts', axis=1, inplace=True) 
+        dataframe.drop(['ts','new_ts'], axis=1, inplace=True) 
 
         return dataframe
     
-    # drop unnecessary columns
-    def drop_columns(dataframe, drop_column):
-
-        # drop columns not needed
-        dataframe.drop(drop_column, axis=1, inplace=True)
-
-        # filter out for the rows which has subtype values
-        dataframe = dataframe[(dataframe.subtype != 'channel_join') & 
-                                    (dataframe.subtype != 'channel_join') &
-                                    (dataframe.subtype != 'channel_purpose') &
-                                    (dataframe.subtype != 'thread_broadcast')]
-        
-        # drop subtype column with the values we don't need anymore
-        dataframe.drop('subtype', axis=1, inplace=True) 
-        
-        return dataframe 
-
-    # collecting attachment from attachment column
-    def return_attachments(txt):
-        """this function is applied to column attachments to extract links
-        """
-        try:
-            dictionary = (txt)[0]
-            if 'original_url' in dictionary:
-                return dictionary.get('original_url', 'None')
-        except:
-            return 'None' 
-    
     # get username
-    def account_name(x):
+    def real_name(x):
         """this function is applied to column user_profile to extract real_name
         """
         if x != x:
             return 'noname'
         else:
-            return x['name']
-
-    # count reactions for each meassage
-    def reactions_count(txt):
-        """this function is applied to column reactions to count reactions
-        """
-        try:
-            dictionary = eval(txt)[0]
-            if 'reactions' in dictionary:
-                return dictionary.get('reactions', 'None')
-        except:
-            return 'None'
+            return x['real_name']
     
-    # get user reaction name
-    def reactions_name(txt):
-        """this function is applied to column reactions to count them
-        """
-        
-        try:
-            dictionary = eval(txt)[0]
-            if 'name' in dictionary:
-                return dictionary.get('name', 'None')
-        except:
-            return 'None'
-
-    def clean_post_feature_eng(dataframe):
+    # define message is edited or not
+    def is_edited(x):
+        if pd.isna(x) != True:
+            return 'edited'
+        else:
+            return np.nan
     
-    # droppig unneccessary columns
-        dataframe.drop(['reactions', 'reply_users', 'replies'], axis=1, inplace=True)
-        
-        # replace None values with zero
-        dataframe['reply_count'] = dataframe['reply_count'].fillna(0)
-        dataframe['reply_users_count'] = dataframe['reply_users_count'].fillna(0)
-        dataframe['reply_count'] = dataframe['reply_count'].astype(int)
-        dataframe['reply_users_count'] = dataframe['reply_users_count'].astype(int)
-        
-        # reordering columns
-        dataframe = dataframe[['date', 'time', 'channel_name', 'user',  
-                        'real_name', 'text', 'reply_count', 'reply_users_count',
-                        'reactions_count', 'reactions_name', 'attachments'
-                         ]]
-        
-        return dataframe
+    # define message is reply or not
+    def is_reply(x):
+        if pd.isna(x) != True:
+            return 'reply'
+        else:
+            return np.nan
+
+# define function for task scorecard
+def point_judge(message_text):
+    TASK_POINT = 0
+    split_text = message_text.split("\n")
+    for i in split_text:
+        if re.search(r"^[1-9]", i) or re.search(r"^•", i):
+            # print(i)
+            TASK_POINT += 1
+            # print("point +1 for task")
+
+            #checking for OKR
+            if re.search(r"\(.*\)", i) != None:
+                TASK_POINT += 1
+                # print("point +1 for OKR")
+            else: 
+                None
+            
+            # checking for progress checklist
+            if re.search(r"\:.*\:", i) != None:
+                TASK_POINT += 1
+                # print("point +1 for progress")
+            else:
+                None
+        else:
+            None
+    return TASK_POINT
+
+# define function for task scorecard
+def time_point(time):
+    TIME_POINT = 0
+    if time >= 9:
+        TIME_POINT += 0
+    else:
+        TIME_POINT += 1
+    return TIME_POINT 
 
 
-
-
-main_folder_path = r"C:\Users\Rija\SHIFTING\Slack project\raw_data"
+# set folder path
+main_folder_path = r"C:\Users\Rija\SHIFTING\Slack project\raw_data_PAI"
+# join all files to one dataframe
 data = parse_all_json(main_folder_path)
 
 # export raw_data to csv file
-data.to_csv(main_folder_path + r"\raw_data.csv", index= False)
-print("export raw_data.csv completed!")
+# data.to_csv(main_folder_path + r"\raw_data_PAI.csv", index= False)
+# print("export raw_data.csv completed!")
+
+use_cols = ['ts','user_profile','type','text','edited','channel_name','parent_user_id']
+data = data[use_cols]
 
 data = data_cleaning.datetime_wrangling(data)
 
-drop_columns = ['type', 'client_msg_id', 'team', 'user_team',
-             'source_team', 'blocks', 'upload', 'display_as_bot',
-             'thread_ts', 'latest_reply', 'is_locked', 'subscribed',
-             'parent_user_id', 'bot_id', 'bot_profile', 'last_read', 'edited',
-             'purpose', 'inviter', 'topic', 'root', 'old_name', 'name', 'hidden',
-             'files','x_files']
+data['real_name'] = data['user_profile'].apply(data_cleaning.real_name)
+data['is_edited'] = data['edited'].apply(data_cleaning.is_edited)
+data['is_reply'] = data['parent_user_id'].apply(data_cleaning.is_reply)
+data['task_point'] = data['text'].apply(point_judge)
+data['time_point'] = data['hour'].apply(time_point)
 
-data = data_cleaning.drop_columns(data, drop_columns)
-data['attachments'] = data['attachments'].apply(data_cleaning.return_attachments)
-data['real_name'] = data['user_profile'].apply(data_cleaning.account_name)
+# replace time point for reply message 
+data.loc[data['is_reply'] == 'reply', 'time_point'] = 0
 
-# drop user_profile column
-data.drop('user_profile', axis=1, inplace=True) 
+# drop unnecassary column
+data.drop(['parent_user_id','user_profile','edited'], axis= 1, inplace= True)
 
-data['reactions_count'] = data['reactions'].apply(data_cleaning.reactions_count)
-data['reactions_name'] = data['reactions'].apply(data_cleaning.reactions_name)
-
-# cleaning again after feature engineering
-data = data_cleaning.clean_post_feature_eng(data)
+# reordering column
+data = data[['date','time','hour','real_name','type','text','is_edited','is_reply','channel_name','task_point','time_point']]
 
 # export data_clean to excel file
-data.to_excel(main_folder_path + r"\clean_data.xlsx",sheet_name= "main" , index= False)
+data.to_excel(main_folder_path + r"\clean_data.xlsx",sheet_name= "recap" , index= False)
 print("export clean_data.csv completed!")
-
