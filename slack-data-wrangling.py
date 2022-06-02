@@ -1,12 +1,11 @@
 # import library
 import os
 import json
-import glob
 import numpy as np
 import pandas as pd
 import re 
-import pytz
 from datetime import datetime
+import pytz
 
 
 #generate all channels in one dataframe
@@ -109,10 +108,43 @@ def point_judge(message_text):
 def time_point(time):
     TIME_POINT = 0
     if time >= 9:
-        TIME_POINT += 0
+        TIME_POINT -= 1
     else:
         TIME_POINT += 1
     return TIME_POINT 
+
+def count_absent_day(dataframe):
+    pai_member = list(dataframe['real_name'].unique())
+    
+    weekdays = dataframe['date'].unique()
+    member_each_day = []
+    for day in weekdays:
+        per_day = dataframe[dataframe['date'] == day]
+        member_name_list= list(per_day['real_name'].unique())
+        # print(len(member_name_list))
+        member_each_day.append(member_name_list)
+
+    member_team = []
+    total_absen = []
+
+    for name in pai_member:
+        ABSEN_DAY = 0
+        for i in range(0,len(member_each_day)):
+            if name not in member_each_day[i]:
+                ABSEN_DAY += 1
+                        
+            else: 
+                None
+        
+        member_team.append(name)
+        total_absen.append(ABSEN_DAY)
+
+    absen_df = pd.DataFrame(
+        {'name' : member_team,
+        'total_absen' : total_absen } 
+    ).sort_values('name')
+    
+    return absen_df
 
 
 # set folder path
@@ -144,6 +176,12 @@ data.drop(['parent_user_id','user_profile','edited'], axis= 1, inplace= True)
 # reordering column
 data = data[['date','time','hour','real_name','type','text','is_edited','is_reply','channel_name','task_point','time_point']]
 
+# create dataframe for absen day
+absen_df = count_absent_day(data)
+
 # export data_clean to excel file
-data.to_excel(main_folder_path + r"\clean_data.xlsx",sheet_name= "recap" , index= False)
+writer = pd.ExcelWriter(main_folder_path + r"\clean_data.xlsx", engine='xlsxwriter')
+data.to_excel(writer, sheet_name= "recap", index= False)
+absen_df.to_excel(writer, sheet_name= "absent_day", index= False)
+writer.save()
 print("export clean_data.csv completed!")
