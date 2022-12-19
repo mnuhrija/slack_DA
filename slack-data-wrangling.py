@@ -33,7 +33,9 @@ class data_cleaning:
 
     # data wrangling
     def datetime_wrangling(dataframe):
-        ###this function is applied to summarise wrangling steps with datetime
+        '''
+        this function is applied to summarise wrangling steps with datetime
+        '''
         new_ts= []
         # convert ts to datetime(localtime WIB) from float
         for i in dataframe['ts']:
@@ -48,6 +50,9 @@ class data_cleaning:
         
         # create a column for the months of the year using the ts column
         dataframe['hour'] = dataframe['new_ts'].dt.hour
+
+        # create a column for the day  using the ts column
+        dataframe['day'] = dataframe['new_ts'].dt.strftime("%A")
 
         # drop ts column
         dataframe.drop(['ts','new_ts'], axis=1, inplace=True) 
@@ -116,7 +121,8 @@ def time_point(time):
 def count_absent_day(dataframe):
     pai_member = list(dataframe['real_name'].unique())
     
-    weekdays = dataframe['date'].unique()
+    # weekdays = dataframe['date'].unique()
+    weekdays = dataframe[(dataframe['day'] != 'Saturday') & (dataframe['day'] != 'Sunday')]['date'].unique()
     member_each_day = []
     for day in weekdays:
         per_day = dataframe[dataframe['date'] == day]
@@ -141,14 +147,14 @@ def count_absent_day(dataframe):
 
     absen_df = pd.DataFrame(
         {'name' : member_team,
-        'total_absen' : total_absen } 
+        'weekdays_absen' : total_absen } 
     ).sort_values('name')
     
     return absen_df
 
 
 # set folder path
-main_folder_path = r"C:\Users\Rija\SHIFTING\Slack project\raw_data_PAI"
+main_folder_path = r"C:\Users\Fujitsu\Project\slack_DA\stayconnected_nov"
 # join all files to one dataframe
 data = parse_all_json(main_folder_path)
 
@@ -170,18 +176,21 @@ data['time_point'] = data['hour'].apply(time_point)
 # replace time point for reply message 
 data.loc[data['is_reply'] == 'reply', 'time_point'] = 0
 
+# # replace time point for edited message 
+# data.loc[data['is_edited'] == 'edited', 'time_point'] = 0
+
 # drop unnecassary column
 data.drop(['parent_user_id','user_profile','edited'], axis= 1, inplace= True)
 
 # reordering column
-data = data[['date','time','hour','real_name','type','text','is_edited','is_reply','channel_name','task_point','time_point']]
+data = data[['date','time','day','hour','real_name','type','text','is_edited','is_reply','task_point','time_point']]
 
 # create dataframe for absen day
 absen_df = count_absent_day(data)
 
 # export data_clean to excel file
-writer = pd.ExcelWriter(main_folder_path + r"\clean_data.xlsx", engine='xlsxwriter')
+writer = pd.ExcelWriter(main_folder_path + r"\clean_data_nov.xlsx", engine='xlsxwriter')
 data.to_excel(writer, sheet_name= "recap", index= False)
 absen_df.to_excel(writer, sheet_name= "absent_day", index= False)
 writer.save()
-print("export clean_data.csv completed!")
+print("file export completed!")
